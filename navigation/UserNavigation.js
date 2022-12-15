@@ -7,8 +7,8 @@ const Stack = createStackNavigator();
 const UserStackNavigation = () => {
   return (
     <Stack.Navigator>
-      <Stack.Screen name="List" component={ListScreen} />
-      <Stack.Screen name="Detail" component={Detail} />
+      <Stack.Screen name="Recipe" component={ListScreen} />
+      <Stack.Screen name="Ingredients" component={Detail} />
     </Stack.Navigator>
   );
 };

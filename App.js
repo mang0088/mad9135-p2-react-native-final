@@ -50,7 +50,7 @@ export default function App() {
         >
           <Tab.Screen name="Home" component={HomeScreen} />
           <Tab.Screen
-            name="List Items"
+            name="Recipes"
             component={UserStackNavigation}
             options={{ headerShown: false }}
           />

@@ -1,14 +1,22 @@
-import { FlatList } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TextInput,
+  ActivityIndicator,
+  TouchableHighlight,
+} from 'react-native';
 import { useState, useEffect } from 'react';
 import ListItem from './ListItem';
 
 function ListScreen({ navigation }) {
   const [list, setList] = useState([]);
-  // const [search, setSearch] = useState([]);
+  const [search, setSearch] = useState([]);
 
-  useEffect(() => {
+  const handleButtonPress = async () => {
     fetch(
-      `https://api.spoonacular.com/recipes/search?apiKey=5782988b879f48a49193d80c856ef1e8&query=pasta/`
+      `https://api.spoonacular.com/recipes/search?apiKey=5782988b879f48a49193d80c856ef1e8&query=${search}/`
     )
       .then((res) => {
         if (!res.ok) throw new Error(res.statusText);
@@ -20,23 +28,90 @@ function ListScreen({ navigation }) {
       .catch((err) => {
         console.log(err);
       });
+  };
+
+  useEffect(() => {
+    handleButtonPress();
   }, []);
 
   if (!list) {
-    return null;
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#0000ff" />
+      </View>
+    );
   }
   return (
-    <FlatList
-      data={list}
-      renderItem={({ item }) => (
-        <ListItem
-          list={item}
-          onPress={() => navigation.navigate('Detail', { id: item.id })}
+    <View>
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={{
+            height: 40,
+            alignSelf: 'center',
+            width: '50%',
+            borderColor: 'gray',
+            borderWidth: 1,
+            padding: 10,
+            borderRadius: 15,
+            fontSize: 18,
+            marginTop: 20,
+            marginBottom: 10,
+          }}
+          placeholder="Enter Dish Name"
+          value={search}
+          onChangeText={(text) => setSearch(text)}
         />
-      )}
-      keyExtractor={(item) => item.id}
-    />
+        <TouchableHighlight
+          activeOpacity={0.9}
+          style={styles.button}
+          underlayColor="#D63113"
+          onPress={handleButtonPress}
+        >
+          <Text style={styles.buttonText}>Search</Text>
+        </TouchableHighlight>
+      </View>
+
+      <FlatList
+        data={list}
+        renderItem={({ item }) => (
+          <ListItem
+            list={item}
+            onPress={() => navigation.navigate('Ingredients', { id: item.id })}
+          />
+        )}
+        keyExtractor={(item) => item.id}
+      />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  button: {
+    alignItems: 'center',
+    tintColor: 'white',
+    backgroundColor: '#1071a4',
+    padding: 10,
+  },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 25,
+    paddingLeft: 15,
+  },
+  buttonText: {
+    textAlign: 'center',
+    color: 'white',
+    fontSize: 18,
+  },
+  titleText: {
+    fontSize: 20,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+});
 
 export default ListScreen;

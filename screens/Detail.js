@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 function DetailScreen({ route }) {
   const id = route.params.id;
   const [details, setDetails] = useState([]);
-  const APIKEY = 'e409000721f4408fb6a467eabe04f80d';
+  const APIKEY = '5782988b879f48a49193d80c856ef1e8';
   useEffect(() => {
     fetch(
       `https://api.spoonacular.com/recipes/${id}/ingredientWidget.json?apiKey=${APIKEY}`

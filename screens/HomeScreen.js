@@ -9,9 +9,13 @@ import {
   TouchableHighlight,
   ActivityIndicator,
   Alert,
+  Modal,
+  TouchableOpacity,
+  Animated,
+  Button,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export default function HomeScreen() {
   const [isConnected, setIsConnected] = useState(false);
@@ -19,7 +23,15 @@ export default function HomeScreen() {
   const [long, setLong] = useState('-75.695000');
   const [rest, setRest] = useState([]);
   const [loading, setLoading] = useState(true);
-  const APIKEY = 'e409000721f4408fb6a467eabe04f80d';
+  const APIKEY = '5782988b879f48a49193d80c856ef1e8';
+  const [visible, setVisible] = useState(false);
+  const [monday, setMonday] = useState([]);
+  const [tuesday, setTuesday] = useState([]);
+  const [wednesday, setWednesday] = useState([]);
+  const [thursday, setThursday] = useState([]);
+  const [friday, setFriday] = useState([]);
+  const [saturday, setSaturday] = useState([]);
+  const [sunday, setSunday] = useState([]);
 
   const handleButtonPress = async () => {
     fetch(
@@ -58,6 +70,45 @@ export default function HomeScreen() {
     handleButtonPress();
   }, []);
 
+  const ModalPoup = ({ visible, children }) => {
+    const [showModal, setShowModal] = useState(visible);
+    const scaleValue = useRef(new Animated.Value(0)).current;
+    useEffect(() => {
+      toggleModal();
+    }, [visible]);
+    const toggleModal = () => {
+      if (visible) {
+        setShowModal(true);
+        Animated.spring(scaleValue, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      } else {
+        setTimeout(() => setShowModal(false), 200);
+        Animated.timing(scaleValue, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      }
+    };
+    return (
+      <Modal transparent visible={showModal}>
+        <View style={styles.modalBackGround}>
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              { transform: [{ scale: scaleValue }] },
+            ]}
+          >
+            {children}
+          </Animated.View>
+        </View>
+      </Modal>
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -67,6 +118,49 @@ export default function HomeScreen() {
   } else {
     return (
       <View>
+        <View
+          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+        >
+          <ModalPoup visible={visible}>
+            <View style={{ alignItems: 'center' }}>
+              <View style={styles.header}>
+                <Text style={styles.titleStyle}>Operational Time</Text>
+                <TouchableOpacity onPress={() => setVisible(false)}>
+                  <Image
+                    source={require('../assets/x.png')}
+                    style={{ height: 30, width: 30 }}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.styleSchedule}>
+              <Text style={styles.categoryStyle}>
+                <Text style={{ fontWeight: '500' }}>Monday: </Text> {monday}
+              </Text>
+              <Text style={styles.categoryStyle}>
+                <Text style={{ fontWeight: '500' }}>Tuesday: </Text> {tuesday}
+              </Text>
+              <Text style={styles.categoryStyle}>
+                <Text style={{ fontWeight: '500' }}>Wednesday: </Text>{' '}
+                {wednesday}
+              </Text>
+              <Text style={styles.categoryStyle}>
+                <Text style={{ fontWeight: '500' }}>Thursday: </Text> {thursday}
+              </Text>
+              <Text style={styles.categoryStyle}>
+                <Text style={{ fontWeight: '500' }}>Friday: </Text> {friday}
+              </Text>
+              <Text style={styles.categoryStyle}>
+                <Text style={{ fontWeight: '500' }}>Saturday: </Text> {saturday}
+              </Text>
+              <Text style={styles.categoryStyle}>
+                <Text style={{ fontWeight: '500' }}>Sunday: </Text> {sunday}
+              </Text>
+            </View>
+          </ModalPoup>
+          <Button title="Open Modal" onPress={() => setVisible(true)} />
+        </View>
         <View style={styles.inputContainer}>
           <Text style={styles.titleText}>Latitude:</Text>
           <TextInput
@@ -142,6 +236,19 @@ export default function HomeScreen() {
                     {item.phone_number}
                   </Text>
                 </View>
+                <Button
+                  title="Open Modal"
+                  onPress={() => {
+                    setVisible(true),
+                      setMonday(item.local_hours.operational.Monday),
+                      setTuesday(item.local_hours.operational.Monday),
+                      setWednesday(item.local_hours.operational.Monday),
+                      setThursday(item.local_hours.operational.Monday),
+                      setFriday(item.local_hours.operational.Monday),
+                      setSaturday(item.local_hours.operational.Monday),
+                      setSunday(item.local_hours.operational.Monday);
+                  }}
+                />
               </View>
             )}
             keyExtractor={(item) => item._id}
@@ -230,5 +337,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
+  },
+  modalBackGround: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '80%',
+    backgroundColor: 'white',
+    paddingHorizontal: 20,
+    paddingVertical: 30,
+    borderRadius: 20,
+    elevation: 20,
+  },
+  header: {
+    flexDirection: 'row',
+    width: '100%',
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingBottom: 20,
   },
 });
