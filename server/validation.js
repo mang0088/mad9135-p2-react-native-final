@@ -109,6 +109,23 @@ function parseGeocodeQuery(query = {}) {
   return { text, limit };
 }
 
+/** Validates `/api/place-details` query parameters. */
+function parsePlaceDetailsQuery(query = {}) {
+  const raw = query.id;
+  if (raw === undefined || raw === null) {
+    throw invalidQuery('Provide an "id" place identifier.');
+  }
+  if (typeof raw !== 'string') {
+    throw invalidQuery('"id" must be a string.');
+  }
+
+  const id = raw.trim();
+  if (id === '') throw invalidQuery('Provide an "id" place identifier.');
+  if (id.length > MAX_LOCATION_LENGTH * 2) throw invalidQuery('"id" is too long.');
+
+  return { id };
+}
+
 module.exports = {
   MIN_RADIUS_M,
   MAX_RADIUS_M,
@@ -117,4 +134,5 @@ module.exports = {
   MAX_LOCATION_LENGTH,
   parseRestaurantQuery,
   parseGeocodeQuery,
+  parsePlaceDetailsQuery,
 };

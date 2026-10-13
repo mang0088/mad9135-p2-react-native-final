@@ -7,10 +7,16 @@ const { AppError, locationNotFound, invalidQuery } = require('./errors');
 const {
   geocode,
   searchRestaurants,
+  getPlaceDetails,
   toRestaurantModels,
+  toRestaurantDetails,
   DEFAULT_RADIUS_M,
 } = require('./geoapify');
-const { parseRestaurantQuery, parseGeocodeQuery } = require('./validation');
+const {
+  parseRestaurantQuery,
+  parseGeocodeQuery,
+  parsePlaceDetailsQuery,
+} = require('./validation');
 
 /** Tags an error with the pipeline stage that failed so logs can distinguish
  *  geocoding failures from Places API failures. The tag is never sent to clients. */
@@ -144,6 +150,31 @@ function createApp() {
         count: restaurants.length,
         restaurants,
       });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * Full record for one restaurant. This is where OpenStreetMap-backed opening
+   * hours, website and phone numbers are available (when the place has them).
+   */
+  app.get('/api/place-details', async (req, res, next) => {
+    try {
+      const { id } = parsePlaceDetailsQuery(req.query);
+
+      let place;
+      try {
+        place = await getPlaceDetails(id);
+      } catch (err) {
+        throw withStage(err, 'place-details');
+      }
+
+      if (!place) {
+        throw new AppError('PLACE_NOT_FOUND', 'No details were found for that place.', 404);
+      }
+
+      res.json({ place: toRestaurantDetails(place) });
     } catch (err) {
       next(err);
     }

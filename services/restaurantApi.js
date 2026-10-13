@@ -155,4 +155,19 @@ export async function fetchRestaurants({
   };
 }
 
+/**
+ * Full record for one restaurant (opening hours, website, phone, ...) when the
+ * provider has them. Resolves to null when the provider has no such record.
+ */
+export async function fetchRestaurantDetails(placeId, { signal } = {}) {
+  if (typeof placeId !== 'string' || placeId.trim() === '') {
+    throw new RestaurantApiError('Missing place identifier.', { code: 'INVALID_INPUT' });
+  }
+
+  const query = buildQueryString({ id: placeId });
+  const body = await requestJson(`/api/place-details?${query}`, { signal });
+
+  return body.place || null;
+}
+
 export { DEFAULT_RADIUS_M, DEFAULT_LIMIT, DEFAULT_SERVER_PORT };

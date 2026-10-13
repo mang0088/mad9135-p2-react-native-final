@@ -3,13 +3,14 @@
 const request = require('supertest');
 
 const { createApp } = require('../app');
-const { geocodeCache, placesCache } = require('../geoapify');
+const { geocodeCache, placesCache, placeDetailsCache } = require('../geoapify');
 const {
   API_KEY,
   NORWICH,
   GREAT_YARMOUTH,
   geocodeResultsBody,
   placesBody,
+  placeDetailsBody,
   jsonResponse,
   malformedResponse,
   createGeoapifyFetch,
@@ -23,6 +24,7 @@ beforeEach(() => {
   process.env.GEOAPIFY_API_KEY = API_KEY;
   geocodeCache.clear();
   placesCache.clear();
+  placeDetailsCache.clear();
 });
 
 afterEach(() => {
@@ -282,6 +284,75 @@ describe('GET /api/restaurants - upstream failures', () => {
 
     expect(res.status).toBe(502);
     expect(res.body.error.code).toBe('UPSTREAM_ERROR');
+  });
+});
+
+describe('GET /api/place-details', () => {
+  it('returns the full field set for a known place', async () => {
+    global.fetch = jest.fn(
+      createGeoapifyFetch({
+        placeDetails: jsonResponse(
+          placeDetailsBody({
+            place_id: 'abc123',
+            name: 'The Bicycle Shop',
+            formatted: '2 St Benedicts St, Norwich, NR2 4AQ, United Kingdom',
+            lat: 52.6305,
+            lon: 1.2923,
+            city: 'Norwich',
+            postcode: 'NR2 4AQ',
+            country: 'United Kingdom',
+            opening_hours: 'Mo-Su 09:00-22:00',
+            website: 'https://example.com',
+            contact: { phone: '+44 1603 123456', email: 'hi@example.com' },
+            cuisine: 'british',
+            wheelchair: 'yes',
+            capacity: 40,
+            datasource: { sourcename: 'openstreetmap', attribution: '© OpenStreetMap contributors' },
+          })
+        ),
+      })
+    );
+
+    const res = await request(app).get('/api/place-details').query({ id: 'abc123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.place).toMatchObject({
+      placeId: 'abc123',
+      name: 'The Bicycle Shop',
+      openingHours: 'Mo-Su 09:00-22:00',
+      website: 'https://example.com',
+      phone: '+44 1603 123456',
+      email: 'hi@example.com',
+      cuisine: 'british',
+      postcode: 'NR2 4AQ',
+      city: 'Norwich',
+    });
+
+    // Fields the provider does not supply are reported as unavailable, not faked.
+    expect(res.body.place.photo).toBeNull();
+    expect(res.body.place.menu).toBeNull();
+    expect(res.body.place.rating).toBeNull();
+    expect(JSON.stringify(res.body)).not.toContain(API_KEY);
+  });
+
+  it('returns 404 when the provider has no record for the id', async () => {
+    global.fetch = jest.fn(
+      createGeoapifyFetch({
+        placeDetails: jsonResponse({ type: 'FeatureCollection', features: [] }),
+      })
+    );
+
+    const res = await request(app).get('/api/place-details').query({ id: 'missing' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('PLACE_NOT_FOUND');
+    expect(res.body.place).toBeUndefined();
+  });
+
+  it('requires an id', async () => {
+    const res = await request(app).get('/api/place-details');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_QUERY');
   });
 });
 

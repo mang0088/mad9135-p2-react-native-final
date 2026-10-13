@@ -10,9 +10,15 @@ import {
   TouchableHighlight,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
+  ScrollView,
 } from 'react-native';
 
-import { fetchRestaurants, DEFAULT_RADIUS_M } from '../services/restaurantApi';
+import {
+  fetchRestaurants,
+  fetchRestaurantDetails,
+  DEFAULT_RADIUS_M,
+} from '../services/restaurantApi';
 
 // No radius control existed previously, so a sensible default is used.
 const RADIUS_METRES = DEFAULT_RADIUS_M;
@@ -36,6 +42,25 @@ function formatCategories(categories) {
   return unique.length > 0 ? unique.slice(0, 3).join(', ') : null;
 }
 
+/**
+ * Renders a labelled row only when a value exists. `fallback` (used for opening
+ * hours) is shown when the value is missing so the field is never silently lost.
+ */
+function DetailRow({ label, value, fallback = null }) {
+  const hasValue =
+    value !== undefined && value !== null && String(value).trim() !== '';
+  const shown = hasValue ? value : fallback;
+
+  if (shown === null || shown === undefined) return null;
+
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{String(shown)}</Text>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const [location, setLocation] = useState('');
   const [restaurants, setRestaurants] = useState([]);
@@ -45,6 +70,11 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searched, setSearched] = useState(false);
+
+  const [details, setDetails] = useState(null);
+  const [detailsVisible, setDetailsVisible] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState(null);
 
   // Discards stale responses and prevents state updates after unmount.
   const requestIdRef = useRef(0);
@@ -111,6 +141,39 @@ export default function HomeScreen() {
     }
 
     runSearch({ location: text });
+  };
+
+  const openDetails = async (item) => {
+    setDetailsVisible(true);
+    setDetails(null);
+    setDetailsError(null);
+
+    if (!item.placeId) {
+      setDetailsError('No extra details are available for this place.');
+      return;
+    }
+
+    setDetailsLoading(true);
+    try {
+      const place = await fetchRestaurantDetails(item.placeId);
+      if (!place) {
+        setDetailsError('No extra details were found for this place.');
+        return;
+      }
+      setDetails(place);
+    } catch (err) {
+      setDetailsError(
+        err && err.message ? err.message : 'Could not load details for this place.'
+      );
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const closeDetails = () => {
+    setDetailsVisible(false);
+    setDetails(null);
+    setDetailsError(null);
   };
 
   const onSelectCandidate = (candidate) => {
@@ -201,6 +264,13 @@ export default function HomeScreen() {
                   </Text>
                 ) : null}
               </View>
+              <TouchableOpacity
+                style={styles.detailsButton}
+                onPress={() => openDetails(item)}
+                disabled={detailsLoading}
+              >
+                <Text style={styles.detailsButtonText}>Details</Text>
+              </TouchableOpacity>
             </View>
           );
         }}
@@ -273,6 +343,76 @@ export default function HomeScreen() {
       ) : null}
 
       <View style={styles.container}>{renderResults()}</View>
+
+      <Modal
+        transparent
+        visible={detailsVisible}
+        animationType="slide"
+        onRequestClose={closeDetails}
+      >
+        <View style={styles.modalBackGround}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Restaurant details</Text>
+              <TouchableOpacity onPress={closeDetails}>
+                <Image
+                  source={require('../assets/x.png')}
+                  style={{ height: 30, width: 30 }}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {detailsLoading ? (
+              <View style={styles.stateContainer}>
+                <ActivityIndicator size="large" color="#0000ff" />
+                <Text style={styles.stateText}>Loading details…</Text>
+              </View>
+            ) : detailsError ? (
+              <Text style={styles.stateText}>{detailsError}</Text>
+            ) : details ? (
+              <ScrollView style={styles.detailsBody}>
+                <DetailRow label="Name" value={details.name} />
+                <DetailRow label="Address" value={details.address} />
+                <DetailRow
+                  label="Opening hours"
+                  value={details.openingHours}
+                  fallback="Not available for this place"
+                />
+                <DetailRow label="Phone" value={details.phone} />
+                <DetailRow label="Website" value={details.website} />
+                <DetailRow label="Cuisine" value={details.cuisine} />
+                <DetailRow
+                  label="Categories"
+                  value={formatCategories(details.categories)}
+                />
+                <DetailRow label="Wheelchair access" value={details.wheelchair} />
+                <DetailRow
+                  label="Capacity"
+                  value={details.capacity === null ? null : details.capacity}
+                />
+                <DetailRow label="Distance" value={formatDistance(details.distance)} />
+                <DetailRow
+                  label="Coordinates"
+                  value={
+                    typeof details.lat === 'number' && typeof details.lon === 'number'
+                      ? `${details.lat}, ${details.lon}`
+                      : null
+                  }
+                />
+                <Text style={styles.detailNote}>
+                  Photos and menus are not available from this data source.
+                </Text>
+                {details.datasource &&
+                (details.datasource.attribution || details.datasource.source) ? (
+                  <Text style={styles.detailNote}>
+                    Data: {details.datasource.attribution || details.datasource.source}
+                  </Text>
+                ) : null}
+              </ScrollView>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -393,6 +533,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
+  },
+  detailsButton: {
+    alignSelf: 'center',
+    backgroundColor: '#1071a4',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 15,
+    marginBottom: 10,
+  },
+  detailsButtonText: {
+    color: 'white',
+    fontSize: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  detailsBody: {
+    maxHeight: 380,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+  detailLabel: {
+    width: 130,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  detailValue: {
+    flex: 1,
+    fontSize: 14,
+  },
+  detailNote: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 8,
+    color: '#555',
   },
   modalBackGround: {
     flex: 1,

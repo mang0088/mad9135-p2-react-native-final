@@ -125,9 +125,52 @@ function mockFetchError(status, error) {
   );
 }
 
+const DETAILS_RESPONSE = {
+  place: {
+    placeId: 'p1',
+    name: 'The Bicycle Shop',
+    address: '2 St Benedicts St, Norwich NR2 4AG, United Kingdom',
+    addressLine1: '2 St Benedicts St',
+    city: 'Norwich',
+    postcode: 'NR2 4AG',
+    country: 'United Kingdom',
+    lat: 52.6305,
+    lon: 1.2923,
+    categories: ['catering.restaurant', 'catering.restaurant.british'],
+    cuisine: 'british',
+    openingHours: 'Mo-Su 09:00-22:00',
+    website: 'https://example.com',
+    phone: '+44 1603 123456',
+    email: 'hi@example.com',
+    wheelchair: 'yes',
+    capacity: 40,
+    distance: 250,
+    datasource: { source: 'openstreetmap', attribution: '© OpenStreetMap contributors' },
+    photo: null,
+    menu: null,
+    rating: null,
+    reviews: null,
+    source: 'geoapify',
+  },
+};
+
 function searchFor(text) {
   fireEvent.changeText(screen.getByPlaceholderText('City, town or postcode'), text);
   fireEvent.press(screen.getByText('Submit'));
+}
+
+/** Routes the search and details requests to different payloads. */
+function mockFetchByPath({ restaurants, details, detailsStatus = 200 }) {
+  global.fetch = jest.fn((url) => {
+    const href = String(url);
+    const body = href.includes('/api/place-details') ? details : restaurants;
+    const ok = !href.includes('/api/place-details') || detailsStatus === 200;
+    return Promise.resolve({
+      ok,
+      status: ok ? 200 : detailsStatus,
+      json: () => Promise.resolve(body),
+    });
+  });
 }
 
 afterEach(() => {
@@ -303,6 +346,100 @@ describe('Home screen - restaurant search', () => {
     await waitFor(() => {
       expect(screen.getByText('Cafe One')).toBeTruthy();
     });
+  });
+});
+
+describe('Home screen - restaurant details fields', () => {
+  it('shows the full field list the provider supplies', async () => {
+    mockFetchByPath({ restaurants: RESTAURANTS_RESPONSE, details: DETAILS_RESPONSE });
+
+    render(<HomeScreen />);
+    searchFor('Norwich');
+
+    await waitFor(() => {
+      expect(screen.getByText('Cafe One')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getAllByText('Details')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('The Bicycle Shop')).toBeTruthy();
+    });
+
+    expect(screen.getByText('Mo-Su 09:00-22:00')).toBeTruthy();
+    expect(screen.getByText('+44 1603 123456')).toBeTruthy();
+    expect(screen.getByText('https://example.com')).toBeTruthy();
+    expect(screen.getByText('british')).toBeTruthy();
+    expect(screen.getByText('250 m away')).toBeTruthy();
+    expect(screen.getByText(/OpenStreetMap contributors/)).toBeTruthy();
+
+    const detailsUrl = String(global.fetch.mock.calls[1][0]);
+    expect(detailsUrl).toContain('/api/place-details');
+    expect(detailsUrl).toContain('id=p1');
+  });
+
+  it('states that photos and menus are unavailable instead of inventing them', async () => {
+    mockFetchByPath({ restaurants: RESTAURANTS_RESPONSE, details: DETAILS_RESPONSE });
+
+    render(<HomeScreen />);
+    searchFor('Norwich');
+
+    await waitFor(() => {
+      expect(screen.getByText('Cafe One')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getAllByText('Details')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('The Bicycle Shop')).toBeTruthy();
+    });
+
+    expect(screen.getByText(/Photos and menus are not available/)).toBeTruthy();
+    expect(screen.queryByText('Rating')).toBeNull();
+    expect(screen.queryByText('Menu')).toBeNull();
+  });
+
+  it('reports opening hours as unavailable when the place has no such tag', async () => {
+    mockFetchByPath({
+      restaurants: RESTAURANTS_RESPONSE,
+      details: { place: { ...DETAILS_RESPONSE.place, openingHours: null } },
+    });
+
+    render(<HomeScreen />);
+    searchFor('Norwich');
+
+    await waitFor(() => {
+      expect(screen.getByText('Cafe One')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getAllByText('Details')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Not available for this place')).toBeTruthy();
+    });
+  });
+
+  it('surfaces a details failure without losing the result list', async () => {
+    mockFetchByPath({
+      restaurants: RESTAURANTS_RESPONSE,
+      details: { error: { code: 'PLACE_NOT_FOUND', message: 'No details were found for that place.' } },
+      detailsStatus: 404,
+    });
+
+    render(<HomeScreen />);
+    searchFor('Norwich');
+
+    await waitFor(() => {
+      expect(screen.getByText('Cafe One')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getAllByText('Details')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/No details were found for that place/)).toBeTruthy();
+    });
+
+    expect(screen.getByText('Cafe One')).toBeTruthy();
   });
 });
 

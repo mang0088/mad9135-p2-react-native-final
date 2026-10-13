@@ -53,6 +53,23 @@ function placesBody(features) {
   };
 }
 
+/** FeatureCollection with exactly the properties supplied (Place Details shape). */
+function placeDetailsBody(properties) {
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties,
+        geometry: {
+          type: 'Point',
+          coordinates: [properties.lon, properties.lat],
+        },
+      },
+    ],
+  };
+}
+
 function jsonResponse(body, { status = 200, headers = {} } = {}) {
   return {
     ok: status >= 200 && status < 300,
@@ -82,7 +99,7 @@ function malformedResponse(status = 200) {
  * Builds a fetch double that routes by endpoint. Unmatched calls throw so a
  * test can never silently hit the network.
  */
-function createGeoapifyFetch({ geocode, places } = {}) {
+function createGeoapifyFetch({ geocode, places, placeDetails } = {}) {
   const fn = async (url) => {
     const href = String(url);
 
@@ -90,6 +107,13 @@ function createGeoapifyFetch({ geocode, places } = {}) {
       if (geocode === undefined) throw new Error(`Unexpected geocoding call: ${href}`);
       if (typeof geocode === 'function') return geocode(url);
       return geocode;
+    }
+
+    // Checked before `/v2/places` so the details endpoint is not shadowed.
+    if (href.includes('/v2/place-details')) {
+      if (placeDetails === undefined) throw new Error(`Unexpected place-details call: ${href}`);
+      if (typeof placeDetails === 'function') return placeDetails(url);
+      return placeDetails;
     }
 
     if (href.includes('/v2/places')) {
@@ -120,6 +144,7 @@ module.exports = {
   GREAT_YARMOUTH,
   geocodeResultsBody,
   placesBody,
+  placeDetailsBody,
   jsonResponse,
   malformedResponse,
   createGeoapifyFetch,

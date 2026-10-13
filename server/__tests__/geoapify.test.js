@@ -3,14 +3,18 @@
 const {
   buildGeocodeUrl,
   buildPlacesUrl,
+  buildPlaceDetailsUrl,
   normalizeGeocodeEntry,
   normalizePlaceFeature,
   dedupePlaces,
   toRestaurantModels,
+  toRestaurantDetails,
   geocode,
   searchRestaurants,
+  getPlaceDetails,
   geocodeCache,
   placesCache,
+  placeDetailsCache,
   RESTAURANT_CATEGORY,
   DEFAULT_RADIUS_M,
 } = require('../geoapify');
@@ -19,6 +23,7 @@ const {
   NORWICH,
   geocodeResultsBody,
   placesBody,
+  placeDetailsBody,
   jsonResponse,
   malformedResponse,
   createGeoapifyFetch,
@@ -30,6 +35,7 @@ beforeEach(() => {
   process.env.GEOAPIFY_API_KEY = API_KEY;
   geocodeCache.clear();
   placesCache.clear();
+  placeDetailsCache.clear();
 });
 
 afterEach(() => {
@@ -107,7 +113,7 @@ describe('places normalization', () => {
       geometry: { type: 'Point', coordinates: [1.2923, 52.6305] },
     });
 
-    expect(place).toEqual({
+    expect(place).toMatchObject({
       placeId: 'abc123',
       name: 'The Bicycle Shop',
       address: '2 St Benedicts St, Norwich NR2 4AG, United Kingdom',
@@ -116,6 +122,22 @@ describe('places normalization', () => {
       categories: ['catering.restaurant', 'catering.restaurant.british'],
       distance: 412,
     });
+
+    // Every optional field exists on the model and is null when OSM has no tag
+    // for it, so the UI can hide it rather than guess.
+    for (const key of [
+      'website',
+      'email',
+      'phone',
+      'openingHours',
+      'cuisine',
+      'wheelchair',
+      'capacity',
+      'description',
+      'datasource',
+    ]) {
+      expect(place[key]).toBeNull();
+    }
   });
 
   it('falls back to geometry coordinates when properties omit lat/lon', () => {
@@ -166,6 +188,169 @@ describe('places normalization', () => {
     ]);
 
     expect(models.map((model) => model.placeId)).toEqual(['near', 'far']);
+  });
+});
+
+describe('optional OpenStreetMap fields', () => {
+  it('captures website, opening hours, phone, email, cuisine and attribution', () => {
+    const place = normalizePlaceFeature({
+      type: 'Feature',
+      properties: {
+        place_id: 'p1',
+        name: 'The Bicycle Shop',
+        formatted: '2 St Benedicts St, Norwich',
+        lat: 52.6305,
+        lon: 1.2923,
+        website: 'https://example.com',
+        opening_hours: 'Mo-Su 09:00-22:00',
+        contact: { phone: '+44 1603 123456', email: 'hi@example.com' },
+        cuisine: 'british',
+        wheelchair: 'yes',
+        capacity: 40,
+        datasource: { sourcename: 'openstreetmap', attribution: '© OpenStreetMap contributors' },
+      },
+    });
+
+    expect(place).toMatchObject({
+      website: 'https://example.com',
+      openingHours: 'Mo-Su 09:00-22:00',
+      phone: '+44 1603 123456',
+      email: 'hi@example.com',
+      cuisine: 'british',
+      wheelchair: 'yes',
+      capacity: 40,
+    });
+    expect(place.datasource).toEqual({
+      source: 'openstreetmap',
+      attribution: '© OpenStreetMap contributors',
+    });
+  });
+
+  it('accepts opening hours wrapped in an object', () => {
+    const place = normalizePlaceFeature({
+      properties: { lat: 52.6, lon: 1.7, opening_hours: { text: 'Mo-Fr 08:00-17:00' } },
+    });
+    expect(place.openingHours).toBe('Mo-Fr 08:00-17:00');
+  });
+
+  it('leaves optional fields null when the place has no such tags', () => {
+    const place = normalizePlaceFeature({ properties: { lat: 52.6, lon: 1.7 } });
+
+    expect(place.website).toBeNull();
+    expect(place.openingHours).toBeNull();
+    expect(place.phone).toBeNull();
+    expect(place.cuisine).toBeNull();
+    expect(place.datasource).toBeNull();
+  });
+
+  it('exposes hours/phone/website on the list model but never invents photos or ratings', () => {
+    const [model] = toRestaurantModels([
+      {
+        placeId: 'p1',
+        name: 'One',
+        address: 'a',
+        lat: 52.6,
+        lon: 1.7,
+        categories: [],
+        distance: 100,
+        openingHours: 'Mo-Su 09:00-22:00',
+        phone: '+44 1603 123456',
+        website: 'https://example.com',
+        cuisine: 'british',
+      },
+    ]);
+
+    expect(model.hours).toBe('Mo-Su 09:00-22:00');
+    expect(model.phone).toBe('+44 1603 123456');
+    expect(model.website).toBe('https://example.com');
+    expect(model.photo).toBeNull();
+    expect(model.rating).toBeNull();
+  });
+});
+
+describe('place details', () => {
+  it('builds the documented place-details URL', () => {
+    const url = buildPlaceDetailsUrl({ placeId: 'abc123', apiKey: API_KEY });
+
+    expect(url.origin + url.pathname).toBe('https://api.geoapify.com/v2/place-details');
+    expect(url.searchParams.get('id')).toBe('abc123');
+    expect(url.searchParams.get('features')).toBe('details');
+    expect(url.searchParams.get('lang')).toBe('en');
+  });
+
+  it('parses a FeatureCollection response', async () => {
+    global.fetch = jest.fn(
+      createGeoapifyFetch({
+        placeDetails: jsonResponse(
+          placeDetailsBody({
+            place_id: 'abc123',
+            name: 'The Bicycle Shop',
+            formatted: '2 St Benedicts St, Norwich',
+            lat: 52.6305,
+            lon: 1.2923,
+            opening_hours: 'Mo-Su 09:00-22:00',
+            website: 'https://example.com',
+          })
+        ),
+      })
+    );
+
+    const details = await getPlaceDetails('abc123');
+
+    expect(details).toMatchObject({
+      placeId: 'abc123',
+      name: 'The Bicycle Shop',
+      openingHours: 'Mo-Su 09:00-22:00',
+      website: 'https://example.com',
+    });
+  });
+
+  it('returns null when the provider has no record', async () => {
+    global.fetch = jest.fn(
+      createGeoapifyFetch({
+        placeDetails: jsonResponse({ type: 'FeatureCollection', features: [] }),
+      })
+    );
+
+    await expect(getPlaceDetails('missing')).resolves.toBeNull();
+  });
+
+  it('caches repeated detail lookups', async () => {
+    global.fetch = jest.fn(
+      createGeoapifyFetch({
+        placeDetails: jsonResponse(placeDetailsBody({ place_id: 'abc', lat: 1, lon: 2 })),
+      })
+    );
+
+    await getPlaceDetails('abc');
+    await getPlaceDetails('abc');
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps upstream failures', async () => {
+    global.fetch = jest.fn(() => Promise.resolve(jsonResponse({}, { status: 429 })));
+    await expect(getPlaceDetails('abc')).rejects.toMatchObject({ code: 'UPSTREAM_RATE_LIMIT' });
+  });
+});
+
+describe('toRestaurantDetails', () => {
+  it('reports unavailable media fields as null instead of inventing them', () => {
+    const details = toRestaurantDetails(
+      normalizePlaceFeature({
+        properties: { place_id: 'p1', name: 'One', lat: 52.6, lon: 1.7, opening_hours: 'Mo-Su 09:00-22:00' },
+      })
+    );
+
+    expect(details.openingHours).toBe('Mo-Su 09:00-22:00');
+    expect(details.photo).toBeNull();
+    expect(details.menu).toBeNull();
+    expect(details.rating).toBeNull();
+    expect(details.reviews).toBeNull();
+  });
+
+  it('returns null for a missing place', () => {
+    expect(toRestaurantDetails(null)).toBeNull();
   });
 });
 
