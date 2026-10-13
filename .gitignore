@@ -1,14 +1,23 @@
 node_modules/
 .expo/
 dist/
+.expo-export-test/
+web-build/
+coverage/
+export.log
 npm-debug.*
+
+# Secrets — never commit real API keys
+.env
+.env.*
+!.env.example
+
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
 *.orig.*
-web-build/
 
 # macOS
 .DS_Store

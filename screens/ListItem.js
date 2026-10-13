@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -7,15 +8,27 @@ import {
   Dimensions,
 } from 'react-native';
 
+const CDN_BASE = 'https://img.spoonacular.com/recipes/';
+
 function ListItem({ list, onPress }) {
+  // The list endpoint returns the image file name in `list.image`. Building a
+  // URL from `list.id` returned a different (wrong) image, so the cards looked
+  // empty. Fall back to the bundled placeholder if the image is missing or
+  // fails to load.
+  const [imageFailed, setImageFailed] = useState(false);
+  const hasRemoteImage = Boolean(list.image) && !imageFailed;
+
   return (
     <TouchableOpacity style={styles.container} onPress={onPress}>
       <View style={styles.cardContainer}>
         <Image
           style={styles.imageStyle}
-          source={{
-            uri: `https://webknox.com/recipeImages/${list.id}-312x231.jpg`,
-          }}
+          source={
+            hasRemoteImage
+              ? { uri: `${CDN_BASE}${list.image}` }
+              : require('../assets/placeholder.png')
+          }
+          onError={() => setImageFailed(true)}
         />
         <View style={styles.infoStyle}>
           <Text style={styles.titleStyle}>{list.title}</Text>
