@@ -1,11 +1,12 @@
 {
   "expo": {
-    "name": "mad9135-p2-react-native-final",
+    "name": "Spooncular",
     "slug": "mad9135-p2-react-native-final",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#FBF8F1",
     "updates": {
       "fallbackToCacheTimeout": 0
     },

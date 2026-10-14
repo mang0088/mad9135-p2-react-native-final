@@ -1,80 +1,45 @@
 import * as React from 'react';
-
-import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { UserStackNavigation } from './navigation/UserNavigation';
+import { StatusBar } from 'expo-status-bar';
 import { StyleSheet } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { PaperProvider } from 'react-native-paper';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import Ionicons from '@expo/vector-icons/Ionicons';
 
-import HomeScreen from './screens/HomeScreen';
+import RootNavigator from './navigation/RootNavigator';
+import { paperSettings } from './components/paperSettings';
+import { appTheme, palette } from './theme';
 
-const homeName = 'Home';
-
-// Icons are keyed by the *actual* tab route name. The Recipes tab was
-// previously matched against the string 'List', which never equalled the
-// registered route name 'Recipes', so its icon name stayed undefined and
-// Ionicons rendered nothing.
-const TAB_ICONS = {
-  Home: { focused: 'home', unfocused: 'home-outline' },
-  Recipes: { focused: 'list', unfocused: 'list-outline' },
+const navigationTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: palette.primary,
+    background: palette.background,
+    card: palette.surface,
+    text: palette.text,
+    border: palette.border,
+  },
 };
-const FALLBACK_ICON = 'ellipse-outline';
-
-const Tab = createBottomTabNavigator();
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={styles.container}>
+    <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <SafeAreaView style={styles.container}>
-          <NavigationContainer>
-            <Tab.Navigator
-              initialRouteName={homeName}
-              screenOptions={({ route }) => ({
-                tabBarActiveTintColor: 'blue',
-                tabBarInactiveTintColor: 'grey',
-                tabBarLabelStyle: {
-                  fontSize: 12,
-                  fontWeight: '800',
-                  paddingBottom: 2,
-                },
-                tabBarStyle: [
-                  {
-                    display: 'flex',
-                  },
-                  null,
-                ],
-                tabBarIcon: ({ focused, color, size }) => {
-                  const icons = TAB_ICONS[route.name];
-                  const iconName = icons
-                    ? focused
-                      ? icons.focused
-                      : icons.unfocused
-                    : FALLBACK_ICON;
-
-                  return <Ionicons name={iconName} size={size} color={color} />;
-                },
-              })}
-            >
-              <Tab.Screen name="Home" component={HomeScreen} />
-              <Tab.Screen
-                name="Recipes"
-                component={UserStackNavigation}
-                options={{ headerShown: false }}
-              />
-            </Tab.Navigator>
+        <PaperProvider theme={appTheme} settings={paperSettings}>
+          <StatusBar style="dark" />
+          <NavigationContainer theme={navigationTheme}>
+            <RootNavigator />
           </NavigationContainer>
-        </SafeAreaView>
+        </PaperProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    justifyContent: 'center',
+    backgroundColor: palette.background,
   },
 });

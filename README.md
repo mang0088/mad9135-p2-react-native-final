@@ -1,170 +1,147 @@
-# mad9135-p2-react-native-final
+# Spooncular
 
-An Expo (React Native) app for finding nearby restaurants and searching recipes.
+A food-discovery and recipe companion built with Expo (React Native), React Native
+Paper (Material Design 3) and `lucide-react-native` icons.
 
-- **Restaurants** — powered by Geoapify (Forward Geocoding + Places), proxied by a
-  small local Node/Express backend so the API key never ships in the app.
-- **Recipes** — still powered by Spoonacular (unchanged).
+Two destinations:
 
-## Architecture
+- **Explore** — restaurant-chain menu dishes, food videos, a daily food fact and a
+  nutrition estimator.
+- **Cook** — recipe search with filters, an ingredient finder, and full recipes with
+  ingredients and cooking instructions.
 
-```
-┌────────────────────┐        HTTP         ┌─────────────────────┐        HTTPS        ┌──────────────┐
-│  Expo app          │  /api/restaurants   │  Node/Express       │  /v1/geocode/search │  Geoapify    │
-│  (screens/,        │ ──────────────────► │  backend (server/)  │  /v2/places         │              │
-│   services/)       │ ◄────────────────── │  holds the API key  │ ◄────────────────── │              │
-└────────────────────┘   normalized JSON   └─────────────────────┘                     └──────────────┘
-        │                                            │
-        └──────────────► api.spoonacular.com ◄───────┘  (recipes only, unchanged)
-```
-
-The mobile app **never** contacts Geoapify and never holds the key. Verified: the
-production bundle contains zero occurrences of `GEOAPIFY_API_KEY`,
-`api.geoapify.com` or `geoapify`.
+All data comes from the Spoonacular Food API.
 
 ## Requirements
 
 | Component | Version |
 |-----------|---------|
-| Expo SDK | 57.0.x (installed 57.0.28) |
+| Expo SDK | 57.x |
 | React Native | 0.86.3 |
 | React | 19.2.3 |
-| Node.js | 18+ (verified on 26.8.1) |
-| Navigation | React Navigation 7.x |
-| Backend | Express 5 + Node's built-in `fetch` |
+| React Native Paper | 5.15.x |
+| lucide-react-native | 1.57.x |
 
 ## Setup
 
 ```bash
 npm install
-
-# 1. Create the server environment file and add your real key
-cp .env.example .env
-# then edit .env and set:
-#   GEOAPIFY_API_KEY=your_actual_key
+cp .env.example .env      # then set the key (see below)
+npm start
 ```
 
-`.env` is gitignored and must never be committed.
+### API key
 
-### Environment variables
+The key lives in `.env` as `EXPO_PUBLIC_SPOONACULAR_API_KEY`.
 
-| Variable | Where | Purpose |
-|----------|-------|---------|
-| `GEOAPIFY_API_KEY` | `server/.env` (server only) | Geoapify credential. **Never** prefix with `EXPO_PUBLIC_`. |
-| `PORT` | `.env` | Backend port (default `3001`). |
-| `HOST` | `.env` | Bind address (default `0.0.0.0` so a phone can reach it). |
-| `EXPO_PUBLIC_API_BASE_URL` | app environment | Optional override for the backend URL (not secret). |
+> **It is not secret.** Expo inlines `EXPO_PUBLIC_*` variables into the JavaScript
+> bundle, so anyone who inspects the shipped app can extract the key. Treat it as a
+> public client credential and rotate it if it is exposed. Hiding it properly would
+> require a backend proxy, which this project deliberately does not add.
 
-## Running
-
-Start the backend and the app in **two terminals**:
-
-```bash
-npm run server    # terminal 1 — backend on http://0.0.0.0:3001
-npm start         # terminal 2 — Expo dev server
-```
-
-The app resolves the backend automatically:
-
-1. `EXPO_PUBLIC_API_BASE_URL` if set, else
-2. the Expo dev server's host with port `3001` (so a physical device on the same
-   Wi‑Fi reaches your machine with no configuration), else
-3. `http://localhost:3001`.
+`.env` is gitignored. Never commit the key or paste it into source, logs or
+screenshots.
 
 ## Scripts
 
 | Command | Purpose |
 |---------|---------|
-| `npm run server` | Start the restaurant backend |
-| `npm start` / `npm run android` / `npm run ios` / `npm run web` | Start Expo |
-| `npm test` | Run all Jest tests (app + backend) |
-| `npm run test:app` | App tests only |
-| `npm run test:server` | Backend tests only |
+| `npm start` | Start the Expo dev server |
+| `npm run ios` / `npm run android` / `npm run web` | Start on a specific platform |
+| `npm test` | Run the Jest suite |
 | `npm run typecheck` | `tsc --noEmit` |
 
-## Backend API
+## Architecture
 
-| Route | Description |
-|-------|-------------|
-| `GET /health` | Liveness probe → `{ "ok": true }` |
-| `GET /api/geocode?text=…&limit=5` | Candidate matches for a place name/postcode |
-| `GET /api/restaurants?location=…&radius=5000&limit=20` | Restaurants near a geocoded place |
-| `GET /api/restaurants?lat=…&lon=…&locationLabel=…` | Restaurants near explicit coordinates (skips geocoding) |
-| `GET /api/place-details?id=…` | Full record for one place (opening hours, website, phone, …) |
+```
+App.js                     providers (Paper, Navigation, SafeArea)
+theme.js                   colours, spacing, radii, typography, layout tokens
+navigation/RootNavigator   two tabs, each wrapping its own stack
+screens/
+  ExploreScreen            menu explorer, videos, trivia, nutrition lens
+  MenuItemDetailsScreen    one menu item + its nutrition
+  RecipesScreen            recipe search + filters
+  IngredientFinderScreen   find recipes from ingredients you have
+  RecipeDetailsScreen      recipe, ingredients, method, nutrition
+components/                reusable cards, image fallback, section header, states
+hooks/useAsyncSection      mount-scoped async section state
+services/spoonacularApi.js the only module that knows the key
+utils/format.js            display formatting (durations, amounts, entities)
+```
 
-Geoapify endpoints used (server-side only):
+### API client
 
-- `https://api.geoapify.com/v1/geocode/search` — `text`, `format=json`, `limit`, `apiKey`
-- `https://api.geoapify.com/v2/places` — `categories=catering.restaurant`,
-  `filter=circle:LON,LAT,RADIUS`, `bias=proximity:LON,LAT`, `limit`, `lang=en`, `apiKey`
-- `https://api.geoapify.com/v2/place-details` — `id`, `features=details`, `lang=en`, `apiKey`
+`services/spoonacularApi.js` is the single place that reads the key and builds
+authenticated URLs. It provides:
 
-**Coordinate order:** Geoapify spatial parameters are **longitude first**. For
-Norwich (`lat 52.6309`, `lon 1.2974`) the filter is `circle:1.2974,52.6309,5000`.
+- Query values encoded individually, so input cannot break out of the URL.
+- A `redact()` helper so no authenticated URL reaches a log or error message.
+- Typed errors: `INVALID_KEY`, `QUOTA_EXCEEDED`, `RATE_LIMIT`, `SERVER_ERROR`,
+  `NETWORK`, `TIMEOUT`, `CANCELLED` — each surfaced with its own message.
+- Request timeouts and abort support.
+- An in-memory TTL cache with in-flight de-duplication, so a re-render or tab switch
+  never re-issues a billable request.
 
-### Response mapping — restaurant fields
+### Endpoints used
 
-Geoapify is OpenStreetMap-backed, so a field is only present when a mapper has
-tagged it. Every field below exists in the JSON response; the ones without a
-Geoapify source are `null` and are hidden by the UI rather than invented.
+| Purpose | Endpoint |
+|---------|----------|
+| Menu dishes | `GET /food/menuItems/search` (`number` clamped to the documented 1–10) |
+| Menu item detail | `GET /food/menuItems/{id}` |
+| Food videos | `GET /food/videos/search` |
+| Food fact | `GET /food/trivia/random` |
+| Nutrition estimate | `GET /recipes/guessNutrition` |
+| Recipe search | `GET /recipes/complexSearch` |
+| Recipes by ingredients | `GET /recipes/findByIngredients` |
+| Recipe detail | `GET /recipes/{id}/information` |
 
-**`GET /api/restaurants` → `restaurants[]` (list)**
+### Quota behaviour
 
-| Field | Geoapify source | Fallback |
-|-------|-----------------|----------|
-| `placeId` | `properties.place_id` | `null` (dedupe falls back to name+coords) |
-| `name` | `properties.name` | `"Unnamed place"` |
-| `address` | `properties.formatted` | `"Address unavailable"` |
-| `lat` / `lon` | `properties.lat` / `properties.lon` | `geometry.coordinates[1]/[0]` |
-| `categories` | `properties.categories` | `[]` (shown as e.g. "British") |
-| `distance` | `properties.distance` (m) | `null` (hidden) |
-| `phone` | `properties.phone` / `properties.contact.phone` | `null` (hidden) |
-| `hours` | `properties.opening_hours` | `null` (hidden) |
-| `website` | `properties.website` | `null` (hidden) |
-| `cuisine` | `properties.cuisine` | `null` (hidden) |
-| `photo` | **not offered by Geoapify** | always `null` — bundled placeholder image |
-| `rating` | **not offered by Geoapify** | always `null` — hidden |
-| `source` | constant | `"geoapify"` |
+Menu items cache for 30 minutes, videos for an hour and the food fact for half a
+day. Nutrition estimation is never automatic — it only runs on an explicit tap.
+Each Home section owns its request and error state, so one failing endpoint never
+blanks the screen. When the daily quota is exhausted (HTTP 402) the affected
+section shows a clear message with a retry action and the rest of the app keeps
+working.
 
-**`GET /api/place-details` → `place` (full record)**
+## Notable behaviours
 
-| Field | Geoapify source |
-|-------|-----------------|
-| `placeId`, `name`, `address`, `lat`, `lon`, `categories`, `distance` | as above |
-| `openingHours` | `properties.opening_hours` (string or `{ text }`) |
-| `website` | `properties.website` |
-| `phone` / `email` | `properties.phone` / `properties.contact` |
-| `cuisine` | `properties.cuisine` |
-| `wheelchair` | `properties.wheelchair` |
-| `capacity` | `properties.capacity` |
-| `description` | `properties.description` |
-| `addressLine1`, `addressLine2`, `street`, `housenumber`, `city`, `state`, `county`, `postcode`, `country` | the matching `properties.*` address parts |
-| `datasource` | `properties.datasource` → `{ source, attribution }` (shown in the modal) |
-| `photo`, `menu`, `rating`, `reviews` | **not offered by Geoapify** — always `null`, and the modal says so |
+- **Images.** The API does not guarantee an image on every record, and the CDN can
+  fail. `components/MediaImage.js` validates the URL, falls back to a branded
+  panel (warm surface + Lucide `CookingPot`/`Utensils` icon) on a missing or failed
+  image, and never substitutes a different dish's photo.
+- **Amounts.** `formatQuantity()` renders float artefacts such as `0.33333334 cup`
+  as `⅓ cup`, but only when the value is genuinely an accurate fraction match. The
+  unit is echoed exactly as supplied — nothing is converted or pluralised.
+- **Nutrition shapes.** `/recipes/guessNutrition` returns `{ value, unit,
+  confidenceRange95Percent }` and a `carbs` key, while recipe/menu nutrition
+  returns `{ amount, unit }` and `carbohydrates`. Both are accepted; the 95%
+  interval is displayed when present.
+- **Text hygiene.** `cleanText()` strips markup and decodes HTML entities
+  (including semicolon-less forms such as `&reg`) before rendering.
+- **Icons.** Lucide is the only icon library. Paper's internal icon resolver is
+  mapped to Lucide in `components/paperSettings.js`, including the Searchbar clear
+  button which Paper would otherwise render with its own icon set.
 
-Deduplication uses `place_id`, falling back to `name|lat|lon`. Features without
-usable coordinates are skipped. Results are sorted by distance when available.
-Confirming the shape: Geoapify separates discovery (`/v2/places`) from detail
-lookups (`/v2/place-details`), which is why the app issues a second, per-place
-request when the user opens a restaurant.
+## Navigation
 
-### Errors
+Two bottom tabs — **Explore** and **Cook** — rendered by a custom floating tab bar
+(`components/TabBar.jsx` + `components/TabBarButton.jsx`) built with
+`react-native-reanimated`.
 
-Structured, secret-free failures: `INVALID_QUERY` (400),
-`LOCATION_NOT_FOUND` (404), `PLACE_NOT_FOUND` (404 for an unknown place id),
-`UPSTREAM_AUTH` (502), `UPSTREAM_ERROR` (502), `UPSTREAM_MALFORMED` (502),
-`UPSTREAM_TIMEOUT` (504), `UPSTREAM_RATE_LIMIT` (503, includes `retryAfter`),
-`CONFIG_MISSING_KEY` (503). Logs tag the failing stage (`geocoding`, `places` or
-`place-details`). Request URLs are never logged because they carry the key.
-Results are cached in memory (geocoding 10 min, places 5 min, place details
-30 min) and are **never retried automatically**.
+- The bar floats above the content as a rounded pill, clear of the home indicator.
+- On selection the icon springs to 1.4x and travels 8pt downward while its label
+  fades out; the reverse happens when the tab is deselected.
+- `assets/icons.js` is the single source of truth for the tab icons, so the custom
+  bar and the navigator cannot drift apart.
+- Screen padding reserves `FLOATING_TAB_BAR_SPACE` so no list item hides behind it.
 
-## Why the restaurant data source changed
+Screenshots and a live animation trace:
 
-The Spoonacular restaurant endpoint (`/food/restaurants/search`) returned
-`{ "restaurants": [] }` for every location tested, so the Home screen could never
-show results. Restaurant retrieval now uses Geoapify; Spoonacular is kept for
-recipes only.
+```bash
+npx expo export --platform web --output-dir .expo-verify-web
+node serve-web.cjs & node capture-tabbar.cjs
+```
 
 ## Tests
 
@@ -172,54 +149,42 @@ recipes only.
 npm test
 ```
 
-84 tests: 60 backend + 24 app. The suite mocks `fetch`, so the full
-request → validate → normalize → render pipeline is exercised without spending
-API credits.
+110 tests. `fetch` is mocked, so no quota is spent. Coverage includes URL encoding
+and key redaction, HTTP-to-error mapping, caching and refresh, input
+normalisation, quantity/fraction/entity formatting, both real nutrition response
+shapes, Lucide export existence (a wrong icon name fails here rather than at
+render time), screen behaviour for search, navigation, empty, error and
+per-section-failure states, and the tab bar (routes and labels preserved, theme
+colours used rather than the reference's, accessibility roles and selected state,
+press/long-press wiring, and the animation constants).
 
-Coverage includes: place-name and postcode geocoding, longitude-before-latitude
-ordering, radius handling, the `catering.restaurant` category, FeatureCollection
-parsing, optional-field extraction (opening hours, website, phone, email,
-cuisine, wheelchair, capacity, attribution), `opening_hours` as both a string
-and an object, place-details URL/parsing/caching, unknown place ids,
-missing-optional-property safety, unknown locations not triggering a Places
-request, empty results without fake fallbacks, upstream
-timeouts/auth/rate-limits/malformed responses, the details modal showing real
-fields and stating that photos/menus are unavailable, and that recipe screens
-and tab navigation still work.
+### Reanimated under Jest
 
-## Manual verification
+`react-native-reanimated` needs its native worklets module mocked. `jest.setup.js`
+calls `setUpTests()`, and `package.json` maps `react-native-worklets` to the mock
+shipped with that package:
 
-```bash
-cp .env.example .env      # add your GEOAPIFY_API_KEY
-npm install
-npm run server            # terminal 1
-npm start                 # terminal 2
+```json
+"moduleNameMapper": {
+  "^react-native-worklets$": "<rootDir>/node_modules/react-native-worklets/lib/module/mock.js"
+}
 ```
 
-1. Run `curl http://localhost:3001/health` → `{"ok":true}`.
-2. In the app, open the **Home** tab, type `Norwich` (or a postcode such as
-   `NR30 1AB`) and tap **Submit**.
-3. Confirmed restaurants appear with real names, addresses, distance and
-   category. If several places match, a "Pick another match" row lets you choose.
-4. Tap **Details** on a card to load the full field list for that place
-   (opening hours, website, phone, cuisine, access, capacity, attribution).
-5. An unknown place shows a clear message and never queries Places.
-6. The **Recipes** tab still searches Spoonacular and opens ingredients.
+## Screenshots
+
+`capture.cjs` drives the exported web build in the installed Chrome at the iPhone 15
+viewport (393×852 @3x) and writes to `screenshots/mobile-preview/`:
+
+```bash
+npx expo export --platform web --output-dir .expo-verify-web
+node serve-web.cjs      # serves the export on :8099
+node capture.cjs
+```
 
 ## Known limitations
 
-- Photos, menus, ratings and reviews are not available from Geoapify
-  (OpenStreetMap has no such data), so no image, menu or rating is ever shown —
-  the list uses a bundled placeholder image and the details modal states that
-  photos and menus are unavailable.
-- Opening hours, website and phone exist only when the underlying OpenStreetMap
-  place has those tags, so many restaurants show "Not available for this place".
-- `EXPO_PUBLIC_API_BASE_URL` may be needed on unusual network setups (e.g. a
-  device that cannot reach the Expo host on port 3001).
-- The Spoonacular key used by the recipe screens is still hardcoded in
-  `screens/ListScreen.js` and `screens/Detail.js` (pre-existing coursework code).
-- iOS builds require macOS/Xcode and were not run here.
-
-## License
-
-Private coursework project.
+- The API key ships inside the bundle (see above).
+- The video cards open YouTube in an external player rather than embedding a
+  player; this follows the YouTube terms Spoonacular's documentation points to.
+- Menu-item search does not establish proximity to a specific branch, and the app
+  labels those results as chain menu items rather than local restaurant listings.

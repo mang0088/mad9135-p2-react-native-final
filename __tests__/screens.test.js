@@ -1,546 +1,466 @@
 /**
- * App-level regression tests.
+ * Screen-level tests for the rebuilt Explore and Cook experiences.
  *
- * The Home screen now talks to the local backend (`server/`), which proxies
- * Geoapify. The backend payload is mocked here so the render pipeline can be
- * verified without a live API key.
+ * `fetch` is mocked per test, so the full render pipeline is exercised with
+ * realistic Spoonacular payload shapes without spending any quota.
  */
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { PaperProvider } from 'react-native-paper';
 
-import App from '../App';
-import HomeScreen from '../screens/HomeScreen';
-import ListScreen from '../screens/ListScreen';
-import DetailScreen from '../screens/Detail';
-import { buildQueryString, getApiBaseUrl } from '../services/restaurantApi';
+import ExploreScreen from '../screens/ExploreScreen';
+import RecipesScreen from '../screens/RecipesScreen';
+import MenuItemDetailsScreen from '../screens/MenuItemDetailsScreen';
+import RecipeDetailsScreen from '../screens/RecipeDetailsScreen';
+import { clearCache } from '../services/spoonacularApi';
+import { appTheme } from '../theme';
+import { paperSettings } from '../components/paperSettings';
+import { searchClearIcon } from '../components/paperSettings';
 
-const NORWICH_ORIGIN = {
-  placeId: 'geo-1',
-  label: 'Norwich, Norfolk, England, United Kingdom',
-  name: 'Norwich',
-  type: 'city',
-  postcode: null,
-  country: 'United Kingdom',
-  lat: 52.6309,
-  lon: 1.2974,
-};
+const navigation = { navigate: jest.fn() };
 
-const RESTAURANTS_RESPONSE = {
-  origin: { ...NORWICH_ORIGIN },
-  candidates: [{ ...NORWICH_ORIGIN }],
-  ambiguous: false,
-  radius: 5000,
-  limit: 20,
-  count: 2,
-  restaurants: [
+/**
+ * Renders a screen inside the same Paper configuration the app supplies, so
+ * components resolve the Lucide icon settings exactly as they do at runtime.
+ */
+function renderScreen(ui) {
+  return render(
+    <PaperProvider theme={appTheme} settings={paperSettings}>
+      {ui}
+    </PaperProvider>
+  );
+}
+
+const MENU_RESPONSE = {
+  menuItems: [
     {
-      placeId: 'p1',
-      name: 'Cafe One',
-      address: '1 High St, Norwich NR1 1AA',
-      lat: 52.63,
-      lon: 1.29,
-      categories: ['catering.restaurant', 'catering.restaurant.british'],
-      distance: 250,
-      phone: null,
-      hours: null,
-      photo: null,
-      rating: null,
-      source: 'geoapify',
-    },
-    {
-      placeId: 'p2',
-      name: 'Bistro Two',
-      address: '2 High St, Norwich NR1 1AB',
-      lat: 52.631,
-      lon: 1.291,
-      categories: ['catering.restaurant'],
-      distance: 1480,
-      phone: null,
-      hours: null,
-      photo: null,
-      rating: null,
-      source: 'geoapify',
-    },
-  ],
-};
-
-const AMBIGUOUS_RESPONSE = {
-  ...RESTAURANTS_RESPONSE,
-  ambiguous: true,
-  candidates: [
-    { ...NORWICH_ORIGIN },
-    {
-      placeId: 'geo-2',
-      label: 'Norwich, Connecticut, United States',
-      name: 'Norwich',
-      type: 'city',
-      lat: 41.5243,
-      lon: -72.0759,
-    },
-  ],
-};
-
-const RECIPE_LIST_RESPONSE = {
-  results: [
-    {
-      id: 716429,
-      title: 'Pasta with Garlic and Cauliflower',
-      image: 'pasta-with-garlic-716429.jpg',
+      id: 101,
+      title: 'Classic Cheeseburger',
+      restaurantChain: 'Golden Grill',
+      image: 'https://img.spoonacular.com/menu/101.jpg',
       imageType: 'jpg',
-      readyInMinutes: 45,
-      servings: 2,
+      calories: 720,
+      readyInMinutes: 15,
     },
-  ],
-};
-
-const INGREDIENTS_RESPONSE = {
-  ingredients: [
     {
-      name: 'butter',
-      image: 'butter-sliced.jpg',
-      amount: { metric: { value: 1, unit: 'Tbsp' }, us: { value: 1, unit: 'Tbsp' } },
+      id: 102,
+      title: 'Garden Salad',
+      restaurantChain: 'Fresh Fork',
+      image: null,
+      calories: null,
+      readyInMinutes: null,
     },
   ],
+  total: 2,
 };
 
-function mockFetchJson(payload) {
-  global.fetch = jest.fn(() =>
-    Promise.resolve({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      json: () => Promise.resolve(payload),
-    })
-  );
-}
-
-function mockFetchError(status, error) {
-  global.fetch = jest.fn(() =>
-    Promise.resolve({
-      ok: false,
-      status,
-      json: () => Promise.resolve({ error }),
-    })
-  );
-}
-
-const DETAILS_RESPONSE = {
-  place: {
-    placeId: 'p1',
-    name: 'The Bicycle Shop',
-    address: '2 St Benedicts St, Norwich NR2 4AG, United Kingdom',
-    addressLine1: '2 St Benedicts St',
-    city: 'Norwich',
-    postcode: 'NR2 4AG',
-    country: 'United Kingdom',
-    lat: 52.6305,
-    lon: 1.2923,
-    categories: ['catering.restaurant', 'catering.restaurant.british'],
-    cuisine: 'british',
-    openingHours: 'Mo-Su 09:00-22:00',
-    website: 'https://example.com',
-    phone: '+44 1603 123456',
-    email: 'hi@example.com',
-    wheelchair: 'yes',
-    capacity: 40,
-    distance: 250,
-    datasource: { source: 'openstreetmap', attribution: '© OpenStreetMap contributors' },
-    photo: null,
-    menu: null,
-    rating: null,
-    reviews: null,
-    source: 'geoapify',
-  },
+const VIDEO_RESPONSE = {
+  videos: [
+    {
+      title: 'How to make the perfect pasta at home',
+      shortTitle: 'Perfect pasta at home',
+      length: 370,
+      rating: 4.8,
+      thumbnail: 'https://img.spoonacular.com/videos/abc.jpg',
+      views: 1250000,
+      youTubeId: 'dQw4w9WgXcQ',
+    },
+  ],
+  total: 1,
 };
 
-function searchFor(text) {
-  fireEvent.changeText(screen.getByPlaceholderText('City, town or postcode'), text);
-  fireEvent.press(screen.getByText('Submit'));
-}
+const TRIVIA_RESPONSE = { id: 'trivia-1', text: 'Honey found in ancient Egyptian tombs was still edible after 3,000 years.' };
 
-/** Routes the search and details requests to different payloads. */
-function mockFetchByPath({ restaurants, details, detailsStatus = 200 }) {
+/** Routes each endpoint to its own payload. */
+function mockApi({ menu = MENU_RESPONSE, videos = VIDEO_RESPONSE, trivia = TRIVIA_RESPONSE, nutrition } = {}) {
   global.fetch = jest.fn((url) => {
     const href = String(url);
-    const body = href.includes('/api/place-details') ? details : restaurants;
-    const ok = !href.includes('/api/place-details') || detailsStatus === 200;
-    return Promise.resolve({
-      ok,
-      status: ok ? 200 : detailsStatus,
-      json: () => Promise.resolve(body),
-    });
+
+    if (href.includes('/food/menuItems/') && !href.includes('/search')) {
+      return json({ nutrition: { calories: { amount: 700, unit: 'calories' }, protein: { amount: 30, unit: 'g' } }, ...MENU_RESPONSE.menuItems[0] });
+    }
+    if (href.includes('/food/menuItems/search')) return json(menu);
+    if (href.includes('/food/videos/search')) return json(videos);
+    if (href.includes('/food/trivia/random')) return json(trivia);
+    if (href.includes('/recipes/guessNutrition')) return json(nutrition ?? {});
+    if (href.includes('/recipes/complexSearch')) {
+      return json({ results: [], totalResults: 0 });
+    }
+    return json({});
+  });
+}
+
+function json(payload, status = 200) {
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => null },
+    json: () => Promise.resolve(payload),
   });
 }
 
 afterEach(() => {
   jest.clearAllMocks();
   delete global.fetch;
+  clearCache();
 });
 
-describe('Home screen - restaurant search', () => {
-  it('geocodes a place name and renders the returned restaurants', async () => {
-    mockFetchJson(RESTAURANTS_RESPONSE);
+describe('Explore — Home', () => {
+  it('shows the brand header and hero copy', async () => {
+    mockApi();
+    renderScreen(<ExploreScreen navigation={navigation} />);
 
-    render(<HomeScreen />);
-    searchFor('Norwich');
-
-    await waitFor(() => {
-      expect(screen.getByText('Cafe One')).toBeTruthy();
-    });
-
-    expect(screen.getByText('Bistro Two')).toBeTruthy();
-    expect(screen.getByText(/Showing restaurants near Norwich/)).toBeTruthy();
-
-    const requested = String(global.fetch.mock.calls[0][0]);
-    expect(requested).toContain('/api/restaurants');
-    expect(requested).toContain('location=Norwich');
-    expect(requested).toContain('radius=5000');
+    expect(screen.getByText('Spooncular')).toBeTruthy();
+    expect(screen.getByText('What are you craving?')).toBeTruthy();
+    expect(
+      screen.getByText('Discover menu favourites, food videos and fresh inspiration.')
+    ).toBeTruthy();
   });
 
-  it('renders a postcode search', async () => {
-    mockFetchJson(RESTAURANTS_RESPONSE);
+  it('renders real menu items returned by the API', async () => {
+    mockApi();
+    renderScreen(<ExploreScreen navigation={navigation} />);
 
-    render(<HomeScreen />);
-    searchFor('NR30 1AB');
+    await waitFor(() => expect(screen.getByText('Classic Cheeseburger')).toBeTruthy());
 
-    await waitFor(() => {
-      expect(screen.getByText('Cafe One')).toBeTruthy();
-    });
-
-    expect(String(global.fetch.mock.calls[0][0])).toContain('location=NR30%201AB');
+    expect(screen.getByText('Golden Grill')).toBeTruthy();
+    expect(screen.getByText('720 kcal')).toBeTruthy();
   });
 
-  it('shows distance and category when the provider supplies them', async () => {
-    mockFetchJson(RESTAURANTS_RESPONSE);
+  it('renders the branded fallback for a menu item with no image', async () => {
+    mockApi();
+    renderScreen(<ExploreScreen navigation={navigation} />);
 
-    render(<HomeScreen />);
-    searchFor('Norwich');
+    await waitFor(() => expect(screen.getByText('Garden Salad')).toBeTruthy());
 
-    await waitFor(() => {
-      expect(screen.getByText(/250 m away/)).toBeTruthy();
-    });
-    expect(screen.getByText(/British/)).toBeTruthy();
+    // One item has a photo, so exactly one fallback panel is shown.
+    const fallbacks = screen.getAllByText('No photo yet');
+    expect(fallbacks.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('does not crash when optional properties are missing', async () => {
-    mockFetchJson({
-      ...RESTAURANTS_RESPONSE,
-      restaurants: [
-        {
-          placeId: null,
-          name: 'Unnamed place',
-          address: 'Address unavailable',
-          lat: 52.6,
-          lon: 1.7,
-          categories: [],
-          distance: null,
-          phone: null,
-          hours: null,
-          photo: null,
-          rating: null,
-          source: 'geoapify',
+  it('renders food videos with a formatted duration, not a raw id', async () => {
+    mockApi();
+    renderScreen(<ExploreScreen navigation={navigation} />);
+
+    await waitFor(() => expect(screen.getByText('Perfect pasta at home')).toBeTruthy());
+
+    expect(screen.getByText('6:10')).toBeTruthy();
+    expect(screen.queryByText('dQw4w9WgXcQ')).toBeNull();
+  });
+
+  it('shows the trivia text returned by the API', async () => {
+    mockApi();
+    renderScreen(<ExploreScreen navigation={navigation} />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/Honey found in ancient Egyptian tombs/)).toBeTruthy()
+    );
+  });
+
+  it('does not refetch trivia on every render', async () => {
+    mockApi();
+    const { rerender } = renderScreen(<ExploreScreen navigation={navigation} />);
+
+    await waitFor(() => screen.getByText(/Honey found in ancient Egyptian tombs/));
+
+    const triviaCalls = () =>
+      global.fetch.mock.calls.filter((c) => String(c[0]).includes('/food/trivia/random')).length;
+
+    const before = triviaCalls();
+    rerender(<ExploreScreen navigation={navigation} />);
+    rerender(<ExploreScreen navigation={navigation} />);
+
+    expect(triviaCalls()).toBe(before);
+  });
+
+  it('rejects an empty dish in the Nutrition Lens without calling the API', async () => {
+    mockApi();
+    renderScreen(<ExploreScreen navigation={navigation} />);
+
+    fireEvent.press(screen.getByLabelText('Estimate nutrition for this dish'));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Enter a dish name first/)).toBeTruthy()
+    );
+
+    const guessCalls = global.fetch.mock.calls.filter((c) =>
+      String(c[0]).includes('guessNutrition')
+    );
+    expect(guessCalls).toHaveLength(0);
+  });
+
+  it('renders returned nutrition values with an estimate disclaimer', async () => {
+    mockApi({
+      // Shape copied from a live /recipes/guessNutrition response: `value` not
+      // `amount`, and `carbs` not `carbohydrates`.
+      nutrition: {
+        recipesUsed: 25,
+        calories: {
+          value: 341.0,
+          unit: 'calories',
+          confidenceRange95Percent: { min: 306.49, max: 431.7 },
         },
-      ],
+        fat: { value: 11.0, unit: 'g' },
+        protein: { value: 11.0, unit: 'g' },
+        carbs: { value: 50.0, unit: 'g' },
+      },
     });
 
-    render(<HomeScreen />);
-    searchFor('Norwich');
+    renderScreen(<ExploreScreen navigation={navigation} />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Unnamed place')).toBeTruthy();
-    });
-    expect(screen.getByText(/Address unavailable/)).toBeTruthy();
-  });
-
-  it('shows an empty state without fabricating data when nothing is nearby', async () => {
-    mockFetchJson({ ...RESTAURANTS_RESPONSE, count: 0, restaurants: [] });
-
-    render(<HomeScreen />);
-    searchFor('Norwich');
-
-    await waitFor(() => {
-      expect(screen.getByText(/No restaurants found nearby/)).toBeTruthy();
-    });
-  });
-
-  it('validates empty input and does not call the API', () => {
-    global.fetch = jest.fn();
-
-    render(<HomeScreen />);
-    fireEvent.press(screen.getByText('Submit'));
-
-    expect(screen.getByText(/Enter a place name or postcode/)).toBeTruthy();
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
-
-  it('shows a server error message and a retry action', async () => {
-    mockFetchError(404, {
-      code: 'LOCATION_NOT_FOUND',
-      message: 'No location matched "Nowhereatall". Try a town, city or postcode.',
-    });
-
-    render(<HomeScreen />);
-    searchFor('Nowhereatall');
-
-    await waitFor(() => {
-      expect(screen.getByText(/No location matched/)).toBeTruthy();
-    });
-    expect(screen.getByText('Retry')).toBeTruthy();
-  });
-
-  it('reports an unreachable backend clearly', async () => {
-    global.fetch = jest.fn(() => Promise.reject(new Error('Network request failed')));
-
-    render(<HomeScreen />);
-    searchFor('Norwich');
-
-    await waitFor(() => {
-      expect(screen.getByText(/Could not reach the restaurant service/)).toBeTruthy();
-    });
-  });
-
-  it('lets the user pick a different match when several places are plausible', async () => {
-    mockFetchJson(AMBIGUOUS_RESPONSE);
-
-    render(<HomeScreen />);
-    searchFor('Norwich');
-
-    await waitFor(() => {
-      expect(screen.getByText(/Pick another match/)).toBeTruthy();
-    });
-
-    fireEvent.press(screen.getByText('Norwich, Connecticut, United States'));
-
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledTimes(2);
-    });
-
-    const secondRequest = String(global.fetch.mock.calls[1][0]);
-    expect(secondRequest).toContain('lat=41.5243');
-    expect(secondRequest).toContain('lon=-72.0759');
-    expect(secondRequest).not.toContain('location=');
-  });
-
-  it('shows a loading state while the request is in flight', async () => {
-    let resolveFetch;
-    global.fetch = jest.fn(
-      () =>
-        new Promise((resolve) => {
-          resolveFetch = () =>
-            resolve({
-              ok: true,
-              status: 200,
-              json: () => Promise.resolve(RESTAURANTS_RESPONSE),
-            });
-        })
+    fireEvent.changeText(
+      screen.getByLabelText('Dish name for nutrition estimate'),
+      'vegetable fried rice'
     );
+    fireEvent.press(screen.getByLabelText('Estimate nutrition for this dish'));
 
-    render(<HomeScreen />);
-    searchFor('Norwich');
+    await waitFor(() => expect(screen.getByText('341')).toBeTruthy());
+    // The unit is suppressed when it would repeat the label ("341 calories"
+    // above "CALORIES"), so only the label is rendered.
+    expect(screen.getByText('Calories')).toBeTruthy();
 
-    expect(screen.getByText(/Searching for restaurants/)).toBeTruthy();
+    expect(screen.getByText('50')).toBeTruthy();
+    // Fat and protein are both 11 g in this payload, so both render.
+    expect(screen.getAllByText('11')).toHaveLength(2);
+    // Gram-denominated macros still show their unit.
+    expect(screen.getAllByText('g')).toHaveLength(3);
+    expect(screen.getByText(/Estimated from the dish name/)).toBeTruthy();
+    // The 95% confidence interval returned by the API is surfaced.
+    expect(screen.getByText('306–432')).toBeTruthy();
+    // The empty-state message must not appear for a real payload.
+    expect(screen.queryByText(/No nutrition information was supplied/)).toBeNull();
 
-    resolveFetch();
+    const guessUrl = decodeURIComponent(
+      String(global.fetch.mock.calls.find((c) => String(c[0]).includes('guessNutrition'))[0])
+    );
+    expect(guessUrl).toContain('title=vegetable fried rice');
+  });
+
+  it('keeps other sections usable when the video endpoint fails', async () => {
+    global.fetch = jest.fn((url) => {
+      const href = String(url);
+      if (href.includes('/food/videos/search')) return json({}, 500);
+      if (href.includes('/food/trivia/random')) return json(TRIVIA_RESPONSE);
+      if (href.includes('/food/menuItems/search')) return json(MENU_RESPONSE);
+      return json({});
+    });
+
+    renderScreen(<ExploreScreen navigation={navigation} />);
+
+    await waitFor(() => expect(screen.getByText('Classic Cheeseburger')).toBeTruthy());
+
+    // The video failure is reported in its own section.
+    expect(screen.getByText(/Spoonacular is having trouble/)).toBeTruthy();
+    // And the rest of the screen still rendered.
+    expect(screen.getByText(/Honey found in ancient Egyptian tombs/)).toBeTruthy();
+  });
+
+  it('shows an empty state rather than an error when a menu search finds nothing', async () => {
+    mockApi({ menu: { menuItems: [], total: 0 } });
+    renderScreen(<ExploreScreen navigation={navigation} />);
+
+    await waitFor(() => expect(screen.getByText(/No menu dishes found/)).toBeTruthy());
+  });
+
+  it('sends the typed query when the user searches', async () => {
+    mockApi();
+    renderScreen(<ExploreScreen navigation={navigation} />);
+
+    // Let the initial load settle: the Search button is disabled while a
+    // request is in flight.
+    await waitFor(() => expect(screen.getByText('Classic Cheeseburger')).toBeTruthy());
+
+    fireEvent.changeText(screen.getByLabelText('Search menu dishes by name'), 'sushi');
+    fireEvent.press(screen.getByLabelText('Search menu dishes'));
 
     await waitFor(() => {
-      expect(screen.getByText('Cafe One')).toBeTruthy();
+      const call = global.fetch.mock.calls
+        .map((c) => decodeURIComponent(String(c[0])))
+        .find((u) => u.includes('query=sushi'));
+      expect(call).toBeTruthy();
     });
+  });
+
+  it('opens menu item details when a card is tapped', async () => {
+    mockApi();
+    renderScreen(<ExploreScreen navigation={navigation} />);
+
+    await waitFor(() => expect(screen.getByText('Classic Cheeseburger')).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText(/Classic Cheeseburger.*View menu item details/));
+
+    expect(navigation.navigate).toHaveBeenCalledWith(
+      'MenuItemDetails',
+      expect.objectContaining({ id: 101 })
+    );
   });
 });
 
-describe('Home screen - restaurant details fields', () => {
-  it('shows the full field list the provider supplies', async () => {
-    mockFetchByPath({ restaurants: RESTAURANTS_RESPONSE, details: DETAILS_RESPONSE });
+describe('Cook — Recipes', () => {
+  it('renders the recipes hero and links to the ingredient finder', () => {
+    mockApi();
+    renderScreen(<RecipesScreen navigation={navigation} />);
 
-    render(<HomeScreen />);
-    searchFor('Norwich');
-
-    await waitFor(() => {
-      expect(screen.getByText('Cafe One')).toBeTruthy();
-    });
-
-    fireEvent.press(screen.getAllByText('Details')[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText('The Bicycle Shop')).toBeTruthy();
-    });
-
-    expect(screen.getByText('Mo-Su 09:00-22:00')).toBeTruthy();
-    expect(screen.getByText('+44 1603 123456')).toBeTruthy();
-    expect(screen.getByText('https://example.com')).toBeTruthy();
-    expect(screen.getByText('british')).toBeTruthy();
-    expect(screen.getByText('250 m away')).toBeTruthy();
-    expect(screen.getByText(/OpenStreetMap contributors/)).toBeTruthy();
-
-    const detailsUrl = String(global.fetch.mock.calls[1][0]);
-    expect(detailsUrl).toContain('/api/place-details');
-    expect(detailsUrl).toContain('id=p1');
+    expect(screen.getByText('Let’s cook')).toBeTruthy();
+    expect(
+      screen.getByLabelText('Find recipes by ingredients I already have')
+    ).toBeTruthy();
   });
 
-  it('states that photos and menus are unavailable instead of inventing them', async () => {
-    mockFetchByPath({ restaurants: RESTAURANTS_RESPONSE, details: DETAILS_RESPONSE });
+  it('does not duplicate the menu explorer on Home', () => {
+    mockApi();
+    renderScreen(<RecipesScreen navigation={navigation} />);
 
-    render(<HomeScreen />);
-    searchFor('Norwich');
-
-    await waitFor(() => {
-      expect(screen.getByText('Cafe One')).toBeTruthy();
-    });
-
-    fireEvent.press(screen.getAllByText('Details')[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText('The Bicycle Shop')).toBeTruthy();
-    });
-
-    expect(screen.getByText(/Photos and menus are not available/)).toBeTruthy();
-    expect(screen.queryByText('Rating')).toBeNull();
-    expect(screen.queryByText('Menu')).toBeNull();
+    // The restaurant-chain menu search belongs to Explore only.
+    expect(screen.queryByLabelText('Search menu dishes')).toBeNull();
+    expect(screen.getByLabelText('Search recipes by name')).toBeTruthy();
   });
 
-  it('reports opening hours as unavailable when the place has no such tag', async () => {
-    mockFetchByPath({
-      restaurants: RESTAURANTS_RESPONSE,
-      details: { place: { ...DETAILS_RESPONSE.place, openingHours: null } },
-    });
+  it('renders recipe results from the complexSearch endpoint', async () => {
+    global.fetch = jest.fn(() =>
+      json({
+        results: [
+          {
+            id: 716429,
+            title: 'Pasta with Garlic and Cauliflower',
+            image: 'https://img.spoonacular.com/recipes/716429.jpg',
+            readyInMinutes: 45,
+            servings: 2,
+          },
+        ],
+        totalResults: 1,
+      })
+    );
 
-    render(<HomeScreen />);
-    searchFor('Norwich');
+    renderScreen(<RecipesScreen navigation={navigation} />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Cafe One')).toBeTruthy();
-    });
+    await waitFor(() =>
+      expect(screen.getByText('Pasta with Garlic and Cauliflower')).toBeTruthy()
+    );
 
-    fireEvent.press(screen.getAllByText('Details')[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText('Not available for this place')).toBeTruthy();
-    });
+    expect(screen.getByText('45 min')).toBeTruthy();
+    expect(screen.getByText('2 servings')).toBeTruthy();
   });
 
-  it('surfaces a details failure without losing the result list', async () => {
-    mockFetchByPath({
-      restaurants: RESTAURANTS_RESPONSE,
-      details: { error: { code: 'PLACE_NOT_FOUND', message: 'No details were found for that place.' } },
-      detailsStatus: 404,
-    });
+  it('navigates to recipe details', async () => {
+    global.fetch = jest.fn(() =>
+      json({
+        results: [{ id: 42, title: 'Ramen', image: null, readyInMinutes: 30, servings: 4 }],
+        totalResults: 1,
+      })
+    );
 
-    render(<HomeScreen />);
-    searchFor('Norwich');
+    renderScreen(<RecipesScreen navigation={navigation} />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Cafe One')).toBeTruthy();
-    });
+    await waitFor(() => expect(screen.getByText('Ramen')).toBeTruthy());
+    fireEvent.press(screen.getByLabelText('Open recipe Ramen'));
 
-    fireEvent.press(screen.getAllByText('Details')[0]);
+    expect(navigation.navigate).toHaveBeenCalledWith(
+      'RecipeDetails',
+      expect.objectContaining({ id: 42 })
+    );
+  });
 
-    await waitFor(() => {
-      expect(screen.getByText(/No details were found for that place/)).toBeTruthy();
-    });
+  it('shows an empty state when no recipes match', async () => {
+    mockApi();
+    renderScreen(<RecipesScreen navigation={navigation} />);
 
-    expect(screen.getByText('Cafe One')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/No recipes found/)).toBeTruthy());
   });
 });
 
-describe('Restaurant API client', () => {
-  it('encodes query parameters safely', () => {
-    expect(buildQueryString({ location: 'NR30 1AB', radius: 5000 })).toBe(
-      'location=NR30%201AB&radius=5000'
-    );
+describe('Menu item details', () => {
+  it('shows the dish, chain and supplied nutrition', async () => {
+    mockApi();
+    renderScreen(<MenuItemDetailsScreen route={{ params: { id: 101 } }} />);
 
-    expect(buildQueryString({ location: 'Norwich, Norfolk & Broadland' })).toBe(
-      'location=Norwich%2C%20Norfolk%20%26%20Broadland'
-    );
+    await waitFor(() => expect(screen.getByText('Classic Cheeseburger')).toBeTruthy());
+
+    expect(screen.getByText('Golden Grill')).toBeTruthy();
+    expect(screen.getByText('700')).toBeTruthy();
+    expect(screen.getByText('Calories')).toBeTruthy();
+    expect(screen.getByText('30')).toBeTruthy();
   });
 
-  it('omits empty parameters', () => {
-    expect(buildQueryString({ radius: 5000, locationLabel: '', location: undefined })).toBe(
-      'radius=5000'
-    );
-  });
+  it('states clearly that this is a menu item, not a branch listing', async () => {
+    mockApi();
+    renderScreen(<MenuItemDetailsScreen route={{ params: { id: 101 } }} />);
 
-  it('resolves a backend base URL', () => {
-    expect(getApiBaseUrl()).toMatch(/^https?:\/\//);
-  });
-});
+    await waitFor(() => expect(screen.getByText('Classic Cheeseburger')).toBeTruthy());
 
-describe('Recipe screens (existing Spoonacular features)', () => {
-  it('renders recipes returned by the API', async () => {
-    mockFetchJson(RECIPE_LIST_RESPONSE);
-
-    render(<ListScreen navigation={{ navigate: jest.fn() }} />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Pasta with Garlic and Cauliflower')).toBeTruthy();
-    });
-  });
-
-  it('shows an empty state when the API returns no recipes', async () => {
-    mockFetchJson({ results: [] });
-
-    render(<ListScreen navigation={{ navigate: jest.fn() }} />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/no recipes found/i)).toBeTruthy();
-    });
-  });
-
-  it('navigates to the detail screen with the recipe id', async () => {
-    mockFetchJson(RECIPE_LIST_RESPONSE);
-    const navigate = jest.fn();
-
-    render(<ListScreen navigation={{ navigate }} />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Pasta with Garlic and Cauliflower')).toBeTruthy();
-    });
-
-    fireEvent.press(screen.getByText('Pasta with Garlic and Cauliflower'));
-
-    expect(navigate).toHaveBeenCalledWith('Ingredients', { id: 716429 });
-  });
-
-  it('renders ingredients returned by the API', async () => {
-    mockFetchJson(INGREDIENTS_RESPONSE);
-
-    render(<DetailScreen route={{ params: { id: 716429 } }} />);
-
-    await waitFor(() => {
-      expect(screen.getByText('butter')).toBeTruthy();
-    });
-  });
-
-  it('shows an error state when the request fails', async () => {
-    global.fetch = jest.fn(() => Promise.reject(new Error('Network request failed')));
-
-    render(<DetailScreen route={{ params: { id: 716429 } }} />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/could not load ingredients/i)).toBeTruthy();
-    });
+    expect(screen.getByText(/restaurant-chain menu item/i)).toBeTruthy();
+    expect(screen.getByText(/does not\s+confirm availability at any particular branch/i)).toBeTruthy();
   });
 });
 
-describe('Tab bar navigation', () => {
-  it('renders an icon with a valid name for every tab', async () => {
-    render(<App />);
+describe('Recipe details', () => {
+  const RECIPE = {
+    id: 716429,
+    title: 'Pasta with Garlic and Cauliflower',
+    image: 'https://img.spoonacular.com/recipes/716429.jpg',
+    readyInMinutes: 45,
+    servings: 2,
+    summary: 'A <b>delicious</b> pasta dish.',
+    extendedIngredients: [
+      { name: 'water', amount: 0.33333334, unit: 'cup', originalString: '⅓ cup water' },
+      { name: 'salt', amount: 2, unit: 'tsp' },
+    ],
+    extendedInstructions: [
+      { step: 'Boil the water.' },
+      { step: 'Drain and serve.' },
+    ],
+    nutrition: { calories: { amount: 500, unit: 'calories' } },
+  };
 
-    const icons = screen.UNSAFE_getAllByType(Ionicons);
-    expect(icons.length).toBeGreaterThanOrEqual(2);
+  it('renders ingredients and numbered instructions', async () => {
+    mockApi();
+    global.fetch = jest.fn(() => json(RECIPE));
 
-    icons.forEach((icon) => {
-      expect(icon.props.name).toBeTruthy();
-    });
+    renderScreen(<RecipeDetailsScreen route={{ params: { id: 716429 } }} />);
+
+    await waitFor(() => expect(screen.getByText('Pasta with Garlic and Cauliflower')).toBeTruthy());
+
+    expect(screen.getByText('⅓ cup water')).toBeTruthy();
+    expect(screen.getByText('2 tsp salt')).toBeTruthy();
+    expect(screen.getByText('Boil the water.')).toBeTruthy();
+    expect(screen.getByText('Drain and serve.')).toBeTruthy();
+    expect(screen.getByText('1')).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
   });
 
-  it('uses a list icon for the Recipes tab', async () => {
-    render(<App />);
+  it('strips HTML from the summary rather than rendering markup', async () => {
+    mockApi();
+    global.fetch = jest.fn(() => json(RECIPE));
 
-    const names = screen.UNSAFE_getAllByType(Ionicons).map((icon) => icon.props.name);
+    renderScreen(<RecipeDetailsScreen route={{ params: { id: 716429 } }} />);
 
-    expect(names).toEqual(
-      expect.arrayContaining([expect.stringMatching(/^home/), expect.stringMatching(/^list/)])
+    await waitFor(() => expect(screen.getByText('A delicious pasta dish.')).toBeTruthy());
+  });
+
+  it('ticks ingredients off locally without claiming persistence', async () => {
+    mockApi();
+    global.fetch = jest.fn(() => json(RECIPE));
+
+    renderScreen(<RecipeDetailsScreen route={{ params: { id: 716429 } }} />);
+
+    await waitFor(() => expect(screen.getByText('2 tsp salt')).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText('2 tsp salt'));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('2 tsp salt').props.accessibilityState.checked).toBe(true)
     );
+  });
+
+  it('reports missing instructions instead of rendering an empty section', async () => {
+    mockApi();
+    global.fetch = jest.fn(() => json({ id: 1, title: 'Odd Recipe', extendedIngredients: [], extendedInstructions: [] }));
+
+    renderScreen(<RecipeDetailsScreen route={{ params: { id: 1 } }} />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/No cooking instructions were supplied/)).toBeTruthy()
+    );
+    expect(screen.getByText(/No ingredient list was supplied/)).toBeTruthy();
   });
 });
