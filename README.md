@@ -106,11 +106,7 @@ The Cook flow, start to finish — search, recipe, then the ingredient checklist
 
 ## 🎬 App demo
 
-<a href="assets/Spooncular_Video.mp4">
-  <img src="assets/Home1.png" width="240" alt="Watch the Spooncular app demo video" />
-</a>
-
-**[▶ Watch the app demo](assets/Spooncular_Video.mp4)** — 1m39s, 1920×1080, 32.7 MB MP4.
+https://github.com/user-attachments/assets/a090f00d-75c4-4308-85ff-88aa7c3f5521
 
 > GitHub does not stream repository-relative MP4 files inline, so the video is
 > linked rather than embedded. Follow the link above to play or download it.
